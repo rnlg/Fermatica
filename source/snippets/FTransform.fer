@@ -1,0 +1,41 @@
+; (c) Roman Lee 2018
+; This is a template for square matrix transformation
+
+; parameters:
+; <vars> --- declaration of variables
+; <l> --- matrix size
+; <M> --- column-wise original matrix
+; <T> --- column-wise transformation matrix
+; <x> --- variable to differentiate with. If it is zero, we make simple similarity transformation
+; So, we are to calculate T^-1.(M.T-D[T,x])
+
+; ============== Variables ==============
+
+<<vars>>
+
+; ============== Arrays ==============
+
+Array m[<<l>>,<<l>>];
+[m] := [(
+<<M>>
+)];
+
+Array t[<<l>>,<<l>>];
+[t] := [(
+<<T>>
+)];
+
+; ============== Program ==============
+
+Array mt[<<l>>,<<l>>];
+Array dm[<<l>>,<<l>>];
+
+if <<x>> = 0 then
+  [mt] := [t]^-1*[m]*[t];
+else
+  [dt] := [< i=1,<<l>> > < j=1,<<l>> > Deriv(t[i,j],<<x>>,1)]; {derivative}
+  [mt] := [t]^-1*([m]*[t]-[dt]);
+fi;
+
+; ============== Clean up ==============
+@([m],[dt],[t]);

@@ -1,0 +1,32 @@
+; (c) Roman Lee 2018
+; This is a template for calculating quolymod
+
+; parameters:
+; <vars> --- declaration of variables
+; <r>,<c> --- matrix size
+; <M> --- column-wise original matrix
+; <poly> --- polynomial to mod over
+
+; ============== Variables ==============
+
+<<vars>>
+
+; ============== Arrays ==============
+
+Array m[<<r>>,<<c>>];
+[m] := [(
+<<M>>
+)];
+
+poly:=<<poly>>;
+
+; ============== Program ==============
+
+for i = 1,<<r>> do
+  for j = 1,<<c>> do
+    m[i,j] := QuolyMod(m[i,j],poly)
+  od
+od;
+
+; ============== Clean up ==============
+; @(poly);

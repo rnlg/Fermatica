@@ -1,0 +1,79 @@
+; (c) Roman Lee 2018
+; Library of functions for manipulating with polynomials and quolynomals in one variable (assuming it is the latest adjoined)
+; Functions so far:
+
+; PolyQ(poly1) --- gives True if poly1 is polynomial in the highest var
+; Lc(poly1) --- gives leading coefficient in the highest var.
+; ExtGCD(poly1,poly2) --- extended GCD. Returns gcd=GCD(poly1,poly2) and sets aExtGCD, bExtGCD so that aExtGCD*poly1 + bExtGCD*poly2 = gcd
+; InvertMod(poly1,poly2) --- inverse of poly1 modulo poly2
+; QuolyMod(quoly,poly1) --- quolynomial quoly modulo poly1
+
+Function PolyQ(poly1) =
+{PolyQ gives True if p is polynomial in the highest var}
+  if Deg(Denom(poly1)) = 0 then True else  False fi.;
+
+Function Lc(poly1) =
+;  Lc gives leading coefficient in the highest var.
+  Coef(poly1, Deg(poly1))/Denom(poly1).;
+
+qRmndr := 0;
+Function Rmndr(poly1,poly2,rem,coef) =
+  if  poly1=0 or Deg(poly2) = 0 then
+    rem := 0;
+    qRmndr := poly1/poly2
+  else
+    rem := Remquot(poly1,Numer(poly2),qRmndr);
+    coef := poly1/(qRmndr*Numer(poly2)+rem);
+    rem := coef*rem;
+    qRmndr := coef*qRmndr*Denom(poly2);
+  fi;
+  rem.;
+
+
+aExtGCD := 0;
+bExtGCD := 0;
+Function ExtGCD(poly1,poly2,aNew,bNew,tmp,tmp1,quot) =
+  {Implemented algorithm from Wikipedia}
+  aNew := Denom(poly1);
+  aExtGCD := 0;
+  bNew: = 0;
+  bExtGCD := Denom(poly2);
+  if poly1=0 or poly2=0 or Deg(aNew)>0 or Deg(bExtGCD)>0 then
+    poly2=0
+  else
+    poly1 := Numer(poly1);
+    poly2 := Numer(poly2);
+    while 1 do
+      tmp := Deg(poly2);
+      tmp1 := Deg(poly1) - tmp + 1;
+      poly1 := Rmndr(poly1,poly2);
+      if poly1 = 0 then &> fi;
+      aNew := aNew - qRmndr*aExtGCD;
+      bNew := bNew - qRmndr*bExtGCD;
+      Swap(poly2,poly1);
+      Swap(aExtGCD,aNew);
+      Swap(bExtGCD,bNew)
+    od
+  fi;
+  poly2.;
+
+Function InvertMod(poly1,poly2, tmp) =
+  tmp:=ExtGCD(poly1,poly2);
+  if Deg(tmp) > 0 then tmp:=0 fi;
+  aExtGCD/tmp.;
+
+Function QuolyMod(quoly,poly1, tmp, res) =
+  tmp := Deg(poly1);
+  if  tmp = 0 then
+    res := 0
+  else
+    res := Numer(quoly)*InvertMod(Denom(quoly),poly1);
+    den := Denom(res);
+    res := Numer(res);
+    res := Rmndr(res,poly1)/den;
+  fi;
+  res.;
+
+!('* ModTools.lib.fer is loaded.');
+
+

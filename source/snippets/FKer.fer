@@ -1,0 +1,43 @@
+; (c) Roman Lee 2018
+; This is a template for finding nullspace of the matrix
+
+; parameters:
+; <vars> --- declaration of variables
+; <rows>,<cols> --- matrix size
+; <matr> --- column-wise matrix
+
+; ============== Variables ==============
+
+<<vars>>
+
+; ============== Arrays ==============
+
+Array m[<<rows>>,<<cols>>];
+[m] := [(
+<<matr>>
+)];
+
+
+; ============== Program ==============
+
+Array b[<<rows>>,<<cols>>];
+
+k := 0; {k counts}
+Colreduce([m],,[b]);
+for j = 1, <<cols>> do
+  if Iszero([m[,j~j]]) then
+    k:+;
+    Switchcol([b],k,j);
+  fi;
+od;
+
+if k=0 then
+  [b[,1~1]]:=0;
+  k:=1;
+fi;
+
+Array ns[<<rows>>,k];
+[ns]:=[b[,~k]];
+
+; ============== Clean up ==============
+@(j,k,[m],[b]);
