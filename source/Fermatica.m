@@ -39,6 +39,7 @@ FDet;
 FNormalize;
 FKer;
 FQuolyMod;
+FLeadingQModTerm;FLeadingQModOrder;
 FGaussSolve;
 
 
@@ -72,6 +73,9 @@ todo["make FGaussSolve work correctly with inhomogeneous equations. Or at least,
 todo["adjust Fermatica to batch run. Run\[Rule]False option is not sufficient as it does not save the information about the Mathematica names of the variables."];
 
 
+todo["Prevent printing huge Fermat output at error"];
+
+
 Options[FDot]={Run->True};
 
 
@@ -79,7 +83,7 @@ FDot[m__?MatrixQ,OptionsPattern[]]:=Module[{
 n,
 ms={m},
 subs,v,
-str,
+str,fs,
 res},
 (*=========================== check input ===========================*)
 n=Length@ms;
@@ -99,9 +103,10 @@ str="
 str=StringReplace[str,(ToString[v]<>"[")~~(n:DigitCharacter..)~~"]":>"v"<>n];
 (*=========================== Run through Fermat ===========================*)
 str=FermatSession[str,Run->OptionValue[Run]];
-If[!TrueQ[OptionValue[Run]],Return[str]];
 (*=========================== Postprocess ===========================*)
-res=str2mat[str,"m",{"v"~~(n:DigitCharacter..):>(ToString[v]<>"[")<>n<>"]"}]/.(Reverse/@subs);
+res=Hold[str2mat[fs[#],"m",{"v"~~(n:DigitCharacter..):>(ToString[v]<>"[")<>n<>"]"}]/.#2]&[str,(Reverse/@subs)];
+If[!TrueQ[OptionValue[Run]],Return[res/.fs->(FermatSession@*ReadString)]];
+res=ReleaseHold[res/.fs->Identity];
 res
 ]
 
@@ -303,6 +308,205 @@ str=FermatSession[str,LibraryLoad->{$FermaticaHomeDirectory<>"snippets/ModTools.
 (*=========================== Postprocess ===========================*)
 If[!TrueQ[OptionValue[Run]],Return[str]];res=str2mat[str,"m",{"v"~~(n:DigitCharacter..):>(ToString[v]<>"[")<>n<>"]"}]/.(Reverse/@subs);
 res
+]
+
+
+todo["Redefine FLeadingQModTerm for matrices."];
+
+
+FLeadingQModTerm::usage="FLeadingQModTerm[\!\(\*
+StyleBox[\"Q\", \"TI\"]\)\!\(\*
+StyleBox[\"(\", \"TI\"]\)\!\(\*
+StyleBox[\"x\", \"TI\"]\)\!\(\*
+StyleBox[\")\", \"TI\"]\),\!\(\*
+StyleBox[\"P\", \"TI\"]\)\!\(\*
+StyleBox[\"(\", \"TI\"]\)\!\(\*
+StyleBox[\"x\", \"TI\"]\)\!\(\*
+StyleBox[\")\", \"TI\"]\),\!\(\*
+StyleBox[\"x\", \"TI\"]\)] gives the result of the form \!\(\*
+StyleBox[\"P\", \"TI\"]\)\!\(\*
+StyleBox[\"(\", \"TI\"]\)\!\(\*
+StyleBox[\"x\", \"TI\"]\)\!\(\*SuperscriptBox[
+StyleBox[\")\", \"TI\"], \(k\)]\)(\!\(\*
+StyleBox[\"R\", \"TI\"]\)\!\(\*
+StyleBox[\"(\", \"TI\"]\)\!\(\*
+StyleBox[\"x\", \"TI\"]\)\!\(\*
+StyleBox[\")\", \"TI\"]\), where \!\(\*
+StyleBox[\"k\", \"TI\"]\) is the \"leading order\" and \!\(\*
+StyleBox[\"R\", \"TI\"]\)\!\(\*
+StyleBox[\"(\", \"TI\"]\)\!\(\*
+StyleBox[\"x\", \"TI\"]\)\!\(\*
+StyleBox[\")\", \"TI\"]\) is the \"remainder\", such that \!\(\*
+StyleBox[\"Q\", \"TI\"]\)\!\(\*
+StyleBox[\"(\", \"TI\"]\)\!\(\*
+StyleBox[\"x\", \"TI\"]\)\!\(\*
+StyleBox[\")\", \"TI\"]\)\!\(\*
+StyleBox[\"=\", \"TI\"]\)\!\(\*
+StyleBox[\"P\", \"TI\"]\)\!\(\*
+StyleBox[\"(\", \"TI\"]\)\!\(\*
+StyleBox[\"x\", \"TI\"]\)\!\(\*SuperscriptBox[
+StyleBox[\")\", \"TI\"], \(k\)]\)(\!\(\*
+StyleBox[\"R\", \"TI\"]\)\!\(\*
+StyleBox[\"(\", \"TI\"]\)\!\(\*
+StyleBox[\"x\", \"TI\"]\)\!\(\*
+StyleBox[\")\", \"TI\"]\)\!\(\*
+StyleBox[\"+\", \"TI\"]\)\!\(\*
+StyleBox[\" \", \"TI\"]\)\!\(\*
+StyleBox[\"P\", \"TI\"]\)\!\(\*
+StyleBox[\"(\", \"TI\"]\)\!\(\*
+StyleBox[\"x\", \"TI\"]\)\!\(\*
+StyleBox[\")\", \"TI\"]\)\!\(\*
+StyleBox[\"\[CenterDot]\", \"TI\"]\)\!\(\*
+StyleBox[\"S\", \"TI\"]\)\!\(\*
+StyleBox[\"(\", \"TI\"]\)\!\(\*
+StyleBox[\"x\", \"TI\"]\)\!\(\*
+StyleBox[\")\", \"TI\"]\)\!\(\*
+StyleBox[\")\", \"TI\"]\), where \!\(\*
+StyleBox[\"S\", \"TI\"]\)\!\(\*
+StyleBox[\"(\", \"TI\"]\)\!\(\*
+StyleBox[\"x\", \"TI\"]\)\!\(\*
+StyleBox[\")\", \"TI\"]\) is a rational function with denominator being mutually simple with \!\(\*
+StyleBox[\"P\", \"TI\"]\)\!\(\*
+StyleBox[\"(\", \"TI\"]\)\!\(\*
+StyleBox[\"x\", \"TI\"]\)\!\(\*
+StyleBox[\")\", \"TI\"]\).";
+
+
+Options[FLeadingQModTerm]={Run->True};
+
+
+FLeadingQModTerm[quoly_,poly_,x_Symbol,OptionsPattern[]]:=Module[{
+subs=Append[DeleteCases[Variables[{quoly,poly}],x],x],
+v,i,
+str,
+templ,file,
+res},
+(*=========================== check input ===========================*)
+If[Not[FreeQ[{quoly,poly},_Complex]],Print["Sorry, can not treat complex numbers."];Abort[]];
+(*=========================== fermat input string ===========================*)
+subs=MapIndexed[#->(v@@#2)&,subs];
+str=var2str[Last/@subs]<>"
+quoly := "<>ToString[quoly/.subs,InputForm]<>";
+poly := "<>ToString[poly/.subs,InputForm]<>";
+quoly := LQMTerm(quoly,poly);";
+str=StringReplace[str,(ToString[v]<>"[")~~(n:DigitCharacter..)~~"]":>"v"<>n];
+(*=========================== Run through Fermat ===========================*)
+str=FermatSession[str,LibraryLoad->{$FermaticaHomeDirectory<>"snippets/ModTools.lib.fer"},Run->OptionValue[Run]];
+If[!OptionValue[Run],Return[str]];
+(*=========================== Postprocess ===========================*)
+res=str2scl[str,"quoly",{"v"~~(n:DigitCharacter..):>(ToString[v]<>"[")<>n<>"]"}]/.(Reverse/@subs);
+res
+]
+
+
+FLeadingQModTerm[m_?MatrixQ,poly_,x_Symbol,OptionsPattern[]]:=Module[{
+r,c,
+subs=Append[DeleteCases[Variables[{m,poly}],x],x],
+v,i,
+str,
+templ,file,
+res},
+{r,c}=Dimensions[m];
+(*=========================== check input ===========================*)
+If[Not[FreeQ[{m,poly},_Complex]],Print["Sorry, can not treat complex numbers."];Abort[]];
+file=OpenRead[$FermaticaHomeDirectory<>"snippets/FLeadingQModTerm.fer"];
+Check[templ="\n\n"<>ReadString[file,EndOfFile],Abort[]];
+Close[file];
+(*=========================== fermat input string ===========================*)
+subs=MapIndexed[#->(v@@#2)&,subs];
+str=StringReplace[templ,{"<<vars>>"->var2str[Last/@subs],"<<r>>"->ToString[r],"<<c>>"->ToString[c],"<<M>>"->imat2str[m/.subs],"<<poly>>"->ToString[poly/.subs,InputForm]}];
+str=StringReplace[str,(ToString[v]<>"[")~~(n:DigitCharacter..)~~"]":>"v"<>n];
+(*=========================== Run through Fermat ===========================*)
+str=FermatSession[str,LibraryLoad->{$FermaticaHomeDirectory<>"snippets/ModTools.lib.fer"},Run->OptionValue[Run]];
+(*=========================== Postprocess ===========================*)
+If[!TrueQ[OptionValue[Run]],Return[str]];res=str2mat[str,"m",{"v"~~(n:DigitCharacter..):>(ToString[v]<>"[")<>n<>"]"}]/.(Reverse/@subs);
+res
+]
+
+
+FLeadingQModOrder::usage="FLeadingQModOrder[\!\(\*
+StyleBox[\"Q\", \"TI\"]\)\!\(\*
+StyleBox[\"(\", \"TI\"]\)\!\(\*
+StyleBox[\"x\", \"TI\"]\)\!\(\*
+StyleBox[\")\", \"TI\"]\),\!\(\*
+StyleBox[\"P\", \"TI\"]\)\!\(\*
+StyleBox[\"(\", \"TI\"]\)\!\(\*
+StyleBox[\"x\", \"TI\"]\)\!\(\*
+StyleBox[\")\", \"TI\"]\),\!\(\*
+StyleBox[\"x\", \"TI\"]\)] gives the \"leading order\"  \!\(\*
+StyleBox[\"k\", \"TI\"]\) such that, \!\(\*
+StyleBox[\"Q\", \"TI\"]\)\!\(\*
+StyleBox[\"(\", \"TI\"]\)\!\(\*
+StyleBox[\"x\", \"TI\"]\)\!\(\*
+StyleBox[\")\", \"TI\"]\)\!\(\*
+StyleBox[\"=\", \"TI\"]\)\!\(\*
+StyleBox[\"P\", \"TI\"]\)\!\(\*
+StyleBox[\"(\", \"TI\"]\)\!\(\*
+StyleBox[\"x\", \"TI\"]\)\!\(\*SuperscriptBox[
+StyleBox[\")\", \"TI\"], \(k\)]\)\!\(\*
+StyleBox[\"S\", \"TI\"]\)\!\(\*
+StyleBox[\"(\", \"TI\"]\)\!\(\*
+StyleBox[\"x\", \"TI\"]\)\!\(\*
+StyleBox[\")\", \"TI\"]\), where both the numerator and denominator of \!\(\*
+StyleBox[\"S\", \"TI\"]\)\!\(\*
+StyleBox[\"(\", \"TI\"]\)\!\(\*
+StyleBox[\"x\", \"TI\"]\)\!\(\*
+StyleBox[\")\", \"TI\"]\) are mutually simple with \!\(\*
+StyleBox[\"P\", \"TI\"]\)\!\(\*
+StyleBox[\"(\", \"TI\"]\)\!\(\*
+StyleBox[\"x\", \"TI\"]\)\!\(\*
+StyleBox[\")\", \"TI\"]\).";
+
+
+Options[FLeadingQModOrder]={Run->True};
+
+
+FLeadingQModOrder[quoly_,poly_,x_Symbol,OptionsPattern[]]:=Module[{
+subs=Append[DeleteCases[Variables[{quoly,poly}],x],x],
+v,i,
+str,
+templ,file,
+res},
+(*=========================== check input ===========================*)
+If[Not[FreeQ[{quoly,poly},_Complex]],Print["Sorry, can not treat complex numbers."];Abort[]];
+(*=========================== fermat input string ===========================*)
+subs=MapIndexed[#->(v@@#2)&,subs];
+str=var2str[Last/@subs]<>"
+quoly := "<>ToString[quoly/.subs,InputForm]<>";
+poly := "<>ToString[poly/.subs,InputForm]<>";
+quoly := LQMOrder(quoly,poly);";
+str=StringReplace[str,(ToString[v]<>"[")~~(n:DigitCharacter..)~~"]":>"v"<>n];
+(*=========================== Run through Fermat ===========================*)
+str=FermatSession[str,LibraryLoad->{$FermaticaHomeDirectory<>"snippets/ModTools.lib.fer"},Run->OptionValue[Run]];
+If[!OptionValue[Run],Return[str]];
+(*=========================== Postprocess ===========================*)
+res=str2scl[str,"quoly",{"infty":>"Infinity","v"~~(n:DigitCharacter..):>(ToString[v]<>"[")<>n<>"]"}]/.(Reverse/@subs);
+res/. 2^100+1->\[Infinity](* dirty hack as there is no infinity in Fermat. Should redo later*)
+]
+
+
+FLeadingQModOrder[m_?MatrixQ,poly_,x_Symbol,OptionsPattern[]]:=Module[{
+r,c,
+subs=Append[DeleteCases[Variables[{m,poly}],x],x],
+v,i,
+str,
+templ,file,
+res},
+{r,c}=Dimensions[m];
+(*=========================== check input ===========================*)
+If[Not[FreeQ[{m,poly},_Complex]],Print["Sorry, can not treat complex numbers."];Abort[]];
+file=OpenRead[$FermaticaHomeDirectory<>"snippets/FLeadingQModOrder.fer"];
+Check[templ="\n\n"<>ReadString[file,EndOfFile],Abort[]];
+Close[file];
+(*=========================== fermat input string ===========================*)
+subs=MapIndexed[#->(v@@#2)&,subs];
+str=StringReplace[templ,{"<<vars>>"->var2str[Last/@subs],"<<r>>"->ToString[r],"<<c>>"->ToString[c],"<<M>>"->imat2str[m/.subs],"<<poly>>"->ToString[poly/.subs,InputForm]}];
+str=StringReplace[str,(ToString[v]<>"[")~~(n:DigitCharacter..)~~"]":>"v"<>n];
+(*=========================== Run through Fermat ===========================*)
+str=FermatSession[str,LibraryLoad->{$FermaticaHomeDirectory<>"snippets/ModTools.lib.fer"},Run->OptionValue[Run]];
+(*=========================== Postprocess ===========================*)
+If[!TrueQ[OptionValue[Run]],Return[str]];res=str2scl[str,"k",{"infty":>"Infinity","v"~~(n:DigitCharacter..):>(ToString[v]<>"[")<>n<>"]"}]/.(Reverse/@subs);
+res/. 2^100+1->\[Infinity](* dirty hack as there is no infinity in Fermat. Should redo later*)
 ]
 
 

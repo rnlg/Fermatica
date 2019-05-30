@@ -1,5 +1,5 @@
-; (c) Roman Lee 2018
-; This is a template for calculating quolymod
+; (c) Roman Lee 2019
+; This is a template for calculating LeadingQModOrder
 ; It depends on ModTools.lib.fer file
 
 ; parameters:
@@ -21,13 +21,24 @@ Array m[<<r>>,<<c>>];
 
 poly:=<<poly>>;
 
+k:=infty;
+
 ; ============== Program ==============
 
 for i = 1,<<r>> do
   for j = 1,<<c>> do
-    m[i,j] := QuolyMod(m[i,j],poly)
+    k1 := LQMOrder(m[i,j],poly);
+    if Numb(k1) then
+      if Numb(k) then
+        if k>k1 then
+          k := k1;
+        fi;
+      else
+        k := k1;
+      fi;
+    fi;
   od
 od;
 
 ; ============== Clean up ==============
-; @(poly);
+ @([m]);

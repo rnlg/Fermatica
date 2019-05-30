@@ -1,5 +1,5 @@
-; (c) Roman Lee 2018
-; This is a template for calculating quolymod
+; (c) Roman Lee 2019
+; This is a template for calculating LeadingQModTerm
 ; It depends on ModTools.lib.fer file
 
 ; parameters:
@@ -25,7 +25,7 @@ poly:=<<poly>>;
 
 for i = 1,<<r>> do
   for j = 1,<<c>> do
-    m[i,j] := QuolyMod(m[i,j],poly)
+    m[i,j] := LQMTerm(m[i,j],poly);
   od
 od;
 
