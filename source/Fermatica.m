@@ -39,7 +39,7 @@ FDet;
 FNormalize;
 FKer;
 FQuolyMod;
-FLeadingQModTerm;FLeadingQModOrder;
+FPolyLeadingTerm;FPolyLeadingOrder;
 FGaussSolve;
 
 
@@ -47,10 +47,6 @@ $FermaticaHomeDirectory=DirectoryName[$InputFileName];
 
 
 $FermaticaVersion="1.00";
-
-
-Print["**************** ",Style["Fermatica v"<>ToString[$FermaticaVersion],{Bold}]," ********************\n\ 
-Inteface to ",Hyperlink["Fermat CAS", "http://home.bway.net/lewis/"],".\nWritten by Roman N. Lee in 2018.\nRead from: "<>$InputFileName<>"\nMD5: "<>ToString[FileHash[$InputFileName,"MD5"]]]
 
 
 System`PartitionWithRemainder::usage="PartitionWithRemainder[list,size] does the same as Partition[list,size], but does not omit the trailing elements if the chunk size does not divide list length.\nE.g. PartitionWithRemainder[{a,b,c,d,e,f,g,h},3] yields {{a,b,c},{d,e,f},{g,h}}.\n Works also for multidimensional arrays.";
@@ -74,6 +70,34 @@ todo["adjust Fermatica to batch run. Run\[Rule]False option is not sufficient as
 
 
 todo["Prevent printing huge Fermat output at error"];
+
+
+SetAttributes[FCStaticMonitor,{HoldAll}];
+FCStaticMonitor[code_,msg_String,delay_:0]:=If[$Notebooks,
+Monitor[code,msg,delay],
+WriteString["stdout","\n["<>msg];(WriteString["stdout","]"];#)&[code]
+];
+
+
+SetAttributes[FCMonitor,{HoldAll}];
+FCMonitor[code_,mon_,delay_:0,msg_String:""]:=If[$Notebooks,
+Monitor[code,mon,delay],
+If[msg=!="",WriteString["stdout","\n["<>msg]];(If[msg=!="",WriteString["stdout","]"]];#)&[code]
+];
+
+
+FCPrint[ex__]:=If[$Notebooks,Print[ex],Print@@(ToString/@{ex})];
+FCPrintTemporary[ex__]:=If[$Notebooks,PrintTemporary[ex]];
+
+
+FCPrint["\n******************** ",Style["Fermatica v"<>ToString[$FermaticaVersion],{Bold}]," ********************\n\
+Inteface to ",Hyperlink["Fermat CAS", "http://home.bway.net/lewis/"],".\nWritten by Roman N. Lee in 2018.\nRead from: "<>$InputFileName<>"\nMD5: "<>ToString[FileHash[$InputFileName,"MD5"]]]
+
+
+FCPrint[ex__]:=If[$Notebooks,Print[ex],Print@@(ToString/@{ex})];
+
+
+FCPrint["$FermatCMD is set to \""<>ToString[$FermatCMD]<>"\""];
 
 
 Options[FDot]={Run->True};
@@ -311,10 +335,10 @@ res
 ]
 
 
-todo["Redefine FLeadingQModTerm for matrices."];
+todo["Redefine FPolyLeadingTerm for matrices."];
 
 
-FLeadingQModTerm::usage="FLeadingQModTerm[\!\(\*
+FPolyLeadingTerm::usage="FPolyLeadingTerm[\!\(\*
 StyleBox[\"Q\", \"TI\"]\)\!\(\*
 StyleBox[\"(\", \"TI\"]\)\!\(\*
 StyleBox[\"x\", \"TI\"]\)\!\(\*
@@ -372,10 +396,10 @@ StyleBox[\"x\", \"TI\"]\)\!\(\*
 StyleBox[\")\", \"TI\"]\).";
 
 
-Options[FLeadingQModTerm]={Run->True};
+Options[FPolyLeadingTerm]={Run->True};
 
 
-FLeadingQModTerm[quoly_,poly_,x_Symbol,OptionsPattern[]]:=Module[{
+FPolyLeadingTerm[quoly_,poly_,x_Symbol,OptionsPattern[]]:=Module[{
 subs=Append[DeleteCases[Variables[{quoly,poly}],x],x],
 v,i,
 str,
@@ -399,7 +423,7 @@ res
 ]
 
 
-FLeadingQModTerm[m_?MatrixQ,poly_,x_Symbol,OptionsPattern[]]:=Module[{
+FPolyLeadingTerm[m_?MatrixQ,poly_,x_Symbol,OptionsPattern[]]:=Module[{
 r,c,
 subs=Append[DeleteCases[Variables[{m,poly}],x],x],
 v,i,
@@ -409,7 +433,7 @@ res},
 {r,c}=Dimensions[m];
 (*=========================== check input ===========================*)
 If[Not[FreeQ[{m,poly},_Complex]],Print["Sorry, can not treat complex numbers."];Abort[]];
-file=OpenRead[$FermaticaHomeDirectory<>"snippets/FLeadingQModTerm.fer"];
+file=OpenRead[$FermaticaHomeDirectory<>"snippets/FPolyLeadingTerm.fer"];
 Check[templ="\n\n"<>ReadString[file,EndOfFile],Abort[]];
 Close[file];
 (*=========================== fermat input string ===========================*)
@@ -424,7 +448,7 @@ res
 ]
 
 
-FLeadingQModOrder::usage="FLeadingQModOrder[\!\(\*
+FPolyLeadingOrder::usage="FPolyLeadingOrder[\!\(\*
 StyleBox[\"Q\", \"TI\"]\)\!\(\*
 StyleBox[\"(\", \"TI\"]\)\!\(\*
 StyleBox[\"x\", \"TI\"]\)\!\(\*
@@ -458,10 +482,10 @@ StyleBox[\"x\", \"TI\"]\)\!\(\*
 StyleBox[\")\", \"TI\"]\).";
 
 
-Options[FLeadingQModOrder]={Run->True};
+Options[FPolyLeadingOrder]={Run->True};
 
 
-FLeadingQModOrder[quoly_,poly_,x_Symbol,OptionsPattern[]]:=Module[{
+FPolyLeadingOrder[quoly_,poly_,x_Symbol,OptionsPattern[]]:=Module[{
 subs=Append[DeleteCases[Variables[{quoly,poly}],x],x],
 v,i,
 str,
@@ -481,11 +505,11 @@ str=FermatSession[str,LibraryLoad->{$FermaticaHomeDirectory<>"snippets/ModTools.
 If[!OptionValue[Run],Return[str]];
 (*=========================== Postprocess ===========================*)
 res=str2scl[str,"quoly",{"infty":>"Infinity","v"~~(n:DigitCharacter..):>(ToString[v]<>"[")<>n<>"]"}]/.(Reverse/@subs);
-res/. 2^100+1->\[Infinity](* dirty hack as there is no infinity in Fermat. Should redo later*)
+res
 ]
 
 
-FLeadingQModOrder[m_?MatrixQ,poly_,x_Symbol,OptionsPattern[]]:=Module[{
+FPolyLeadingOrder[m_?MatrixQ,poly_,x_Symbol,OptionsPattern[]]:=Module[{
 r,c,
 subs=Append[DeleteCases[Variables[{m,poly}],x],x],
 v,i,
@@ -495,7 +519,7 @@ res},
 {r,c}=Dimensions[m];
 (*=========================== check input ===========================*)
 If[Not[FreeQ[{m,poly},_Complex]],Print["Sorry, can not treat complex numbers."];Abort[]];
-file=OpenRead[$FermaticaHomeDirectory<>"snippets/FLeadingQModOrder.fer"];
+file=OpenRead[$FermaticaHomeDirectory<>"snippets/FPolyLeadingOrder.fer"];
 Check[templ="\n\n"<>ReadString[file,EndOfFile],Abort[]];
 Close[file];
 (*=========================== fermat input string ===========================*)
@@ -506,7 +530,7 @@ str=StringReplace[str,(ToString[v]<>"[")~~(n:DigitCharacter..)~~"]":>"v"<>n];
 str=FermatSession[str,LibraryLoad->{$FermaticaHomeDirectory<>"snippets/ModTools.lib.fer"},Run->OptionValue[Run]];
 (*=========================== Postprocess ===========================*)
 If[!TrueQ[OptionValue[Run]],Return[str]];res=str2scl[str,"k",{"infty":>"Infinity","v"~~(n:DigitCharacter..):>(ToString[v]<>"[")<>n<>"]"}]/.(Reverse/@subs);
-res/. 2^100+1->\[Infinity](* dirty hack as there is no infinity in Fermat. Should redo later*)
+res
 ]
 
 
@@ -655,7 +679,7 @@ WriteString[file,FermatSession::switches<>"
 &x;"];
 Close[file];
 If[!OptionValue[Run],Return[in]];
-Monitor[
+FCStaticMonitor[
 CheckAbort[
 Check[fer=StartProcess[$FermatCMD],Message[FermatSession::fail,$FermatCMD];cleanup[];DeleteFile[{in,out}];KillProcess[fer];Abort[]];
 (*WriteLine[fer,"&(R='"<>#<>"');"]&/@OptionValue[LibraryLoad];*)
@@ -786,11 +810,15 @@ ToExpression[Fold[StringReplace,StringTake[stream,{Last[s],First[e]}],{{"\n"->""
 canmult=MatchQ[#,{{_,_}..}]&&MatchQ[DeleteDuplicates/@Partition[Take[Flatten[#],{2,-2}],2],{{_}...}]&;
 
 
-CellPrint[Cell["TODO list:", "Text", CellFrame->{{0, 0}, {0, 1}}]];
-Print[Style["\[FilledSmallCircle] "<>#,{"Text",Small}]]&/@todolist;
+If[NameQ["Global`$FermaticaTODO"]&&Symbol["Global`$FermaticaTODO"],
+Print["TODO list:"];
+Print[Style["\[FilledSmallCircle] "<>#,{"Text",Small}]]&/@todolist];
 
 
 End[];
 
 
 EndPackage[]
+
+
+
