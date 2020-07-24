@@ -28,7 +28,7 @@ Array t[<<l>>,<<l>>];
 ; ============== Program ==============
 
 Array mt[<<l>>,<<l>>];
-Array dm[<<l>>,<<l>>];
+Array dt[<<l>>,<<l>>];
 
 if <<x>> = 0 then
   [mt] := [t]^-1*[m]*[t];

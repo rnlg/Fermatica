@@ -38,19 +38,21 @@ FTransform;
 FDet;
 FNormalize;
 FKer;
+FRowEchelon;
 FQuolyMod;
 FPolyLeadingTerm;FPolyLeadingOrder;
 FGaussSolve;
+FTogether;
 
 
 $FermaticaHomeDirectory=DirectoryName[$InputFileName];
 
 
-$FermaticaVersion="1.00";
+$FermaticaVersion="1.01";
 
 
 System`PartitionWithRemainder::usage="PartitionWithRemainder[list,size] does the same as Partition[list,size], but does not omit the trailing elements if the chunk size does not divide list length.\nE.g. PartitionWithRemainder[{a,b,c,d,e,f,g,h},3] yields {{a,b,c},{d,e,f},{g,h}}.\n Works also for multidimensional arrays.";
-System`PartitionWithRemainder=(Partition[#1,#2,#2,If[Length[#2]>1,{1,1}&/@#2,{1,1}],{}]//.{}:>Sequence[])&;
+System`PartitionWithRemainder=Fold[Replace[#,{}:>Sequence[],{#2}]&,Partition[#1,#2,#2,If[Length[#2]>1,{1,1}&/@#2,{1,1}],{}],Reverse[Length[#2]+Range[Length[#2]]]]&(*(Partition[#1,#2,#2,If[Length[#2]>1,{1,1}&/@#2,{1,1}],{}]//.{}\[RuleDelayed]Sequence[])&;*)
 
 
 Begin["`Private`"]
@@ -72,35 +74,50 @@ todo["adjust Fermatica to batch run. Run\[Rule]False option is not sufficient as
 todo["Prevent printing huge Fermat output at error"];
 
 
-SetAttributes[FCStaticMonitor,{HoldAll}];
-FCStaticMonitor[code_,msg_String,delay_:0]:=If[$Notebooks,
+SetAttributes[CStaticMonitor,{HoldFirst}];
+CStaticMonitor[code_,msg_String,delay_:0]:=If[$Notebooks,
 Monitor[code,msg,delay],
-WriteString["stdout","\n["<>msg];(WriteString["stdout","]"];#)&[code]
+WriteString["stdout","["<>msg];(WriteString["stdout","]\n"];#)&[code]
 ];
 
 
-SetAttributes[FCMonitor,{HoldAll}];
-FCMonitor[code_,mon_,delay_:0,msg_String:""]:=If[$Notebooks,
+SetAttributes[CMonitor,{HoldAll}];
+CMonitor[code_,mon_,delay_:0,msg_String:""]:=If[$Notebooks,
 Monitor[code,mon,delay],
-If[msg=!="",WriteString["stdout","\n["<>msg]];(If[msg=!="",WriteString["stdout","]"]];#)&[code]
+If[msg=!="",WriteString["stdout","["<>msg]];(If[msg=!="",WriteString["stdout","]\n"]];#)&[code]
 ];
 
 
-FCPrint[ex__]:=If[$Notebooks,Print[ex],Print@@(ToString/@{ex})];
-FCPrintTemporary[ex__]:=If[$Notebooks,PrintTemporary[ex]];
+CPrint[ex__]:=If[$Notebooks,Print[ex],WriteString["stdout",#]&/@{ex,"\n"}];
+CPrintTemporary[ex__]:=If[$Notebooks,PrintTemporary[ex],WriteString["stdout",#]&/@{"(",ex,")\n"}];
 
 
-FCPrint["\n******************** ",Style["Fermatica v"<>ToString[$FermaticaVersion],{Bold}]," ********************\n\
-Inteface to ",Hyperlink["Fermat CAS", "http://home.bway.net/lewis/"],".\nWritten by Roman N. Lee in 2018.\nRead from: "<>$InputFileName<>"\nMD5: "<>ToString[FileHash[$InputFileName,"MD5"]]]
+CWrite[msg_String]:=If[!$Notebooks,WriteString["stdout",msg]];
 
 
-FCPrint[ex__]:=If[$Notebooks,Print[ex],Print@@(ToString/@{ex})];
+CProgress[i_,l_]:=(Which[l-i>10^4,If[Mod[i,10^3]==0,CWrite["M"]],l-i>10^3,If[Mod[i,10^2]==0,CWrite["C"]],l-i>10^2,If[Mod[i,10]==0,CWrite["X"]],True,CWrite["."]]);
 
 
-FCPrint["$FermatCMD is set to \""<>ToString[$FermatCMD]<>"\""];
+SetAttributes[CProgressPrint,HoldFirst];
+CProgressPrint[p_Symbol,i_,l_]:=Module[{step=Which[l-p>=10^3,10^3,l-p>=5 10^2,5 10^2,l-p>=10^2,10^2,l-p>=5 10,5 10,l-p>=10,10,l-p>=5,5,True,1],n},
+If[Not[TrueQ[p>=0]],CWrite["["<>ToString[l]<>"|"];p=0;];
+If[TrueQ[i>=p+step],
+n=Quotient[ i-p,step];
+p+=n*step;
+CWrite["."<>ToString[p]](*CWrite[StringRepeat[RomanNumeral[step],n]]*);
+];
+If[i>=l,CWrite["]\n"]]
+];
+
+
+CPrint["\n******************** ",Style["Fermatica v"<>ToString[$FermaticaVersion],{Bold}]," ********************\n\
+Inteface to ",Hyperlink["Fermat CAS", "http://home.bway.net/lewis/"],".\n\[Copyright] Roman N. Lee, 2018.\nRead from: "<>$InputFileName<>" (CRC32: "<>ToString[FileHash[$InputFileName,"CRC32"]]<>")","\n\n$FermatCMD=\""<>ToString[$FermatCMD]<>"\""]
 
 
 Options[FDot]={Run->True};
+
+
+IdentityMatrixQ=#===IdentityMatrix[Length@#]&;
 
 
 FDot[m__?MatrixQ,OptionsPattern[]]:=Module[{
@@ -108,11 +125,14 @@ n,
 ms={m},
 subs,v,
 str,fs,
-res},
+res,
+debug},
 (*=========================== check input ===========================*)
-n=Length@ms;
-If[n==1,Return[ms[[1]]]];(*nothing to multiply*)
 If[!canmult[Dimensions/@ms],Return[$Failed]];
+ms={m};(*debug=First@Timing[ms=DeleteCases[{m},_?IdentityMatrixQ];];
+If[debug>10^-2,Print["Removing identity matrices took ",debug]];*)
+n=Length@ms;
+If[n==1,Return[First@ms]];(*nothing to multiply*)
 (*=========================== fermat input string ===========================*)
 subs=MapIndexed[#->(v@@#2)&,Variables[ms]];
 str="
@@ -335,6 +355,10 @@ res
 ]
 
 
+FQuolyMod[ex_,x_Symbol->poly_,opts:OptionsPattern[]]:=FQuolyMod[ex,poly,x,opts]
+FQuolyMod[ex_,list_List,opts:OptionsPattern[]]:=Fold[FQuolyMod[#1,#2,opts]&,ex,list]
+
+
 todo["Redefine FPolyLeadingTerm for matrices."];
 
 
@@ -351,7 +375,7 @@ StyleBox[\"x\", \"TI\"]\)] gives the result of the form \!\(\*
 StyleBox[\"P\", \"TI\"]\)\!\(\*
 StyleBox[\"(\", \"TI\"]\)\!\(\*
 StyleBox[\"x\", \"TI\"]\)\!\(\*SuperscriptBox[
-StyleBox[\")\", \"TI\"], \(k\)]\)(\!\(\*
+StyleBox[\")\", \"TI\"], \(k\)]\)\!\(\*
 StyleBox[\"R\", \"TI\"]\)\!\(\*
 StyleBox[\"(\", \"TI\"]\)\!\(\*
 StyleBox[\"x\", \"TI\"]\)\!\(\*
@@ -601,39 +625,127 @@ Transpose[res]
 ]
 
 
-FGaussSolve::usage ="FGaussSolve[eqs,vars] solves homogeneous linear equations.";
-FGaussSolve::notimplemented ="FGaussSolve solves only homogeneous linear equations.";
+FRowEchelon::usage ="FRowEchelon[\!\(\*
+StyleBox[\"m\", \"TI\"]\)] gives the row-reduced form of the matrix \!\(\*
+StyleBox[\"m\", \"TI\"]\).";
 
 
-Options[FGaussSolve]={Run->True,Reduce->False};
-FGaussSolve[eqs_,vars_,OptionsPattern[]]:=Module[{
-m,rvars=Reverse[vars],
+Options[FRowEchelon]={Run->True,Reduce->False};
+FRowEchelon[m_?MatrixQ,OptionsPattern[]]:=Module[{
+mt,vs,
 v,subs,
-str,
-res},
-m=CoefficientArrays[eqs,rvars];
-If[Length[ArrayRules[First[m]]]>1||Length[m]=!=2,Message[FGaussSolve::notimplemented];Abort[]];
-m=ArrayRules[Last[m]];
-(*=========================== check input ===========================*)
-If[Not[FreeQ[m,_Complex]],Print["Sorry, can not treat complex numbers in matrix."];Abort[]];
-(*=========================== fermat input string ===========================*)
-	(*make substitutions*)
-subs=MapIndexed[#->(v@@#2)&,Variables[Last/@m]];
+str,res,
+monbuf,monpr=0,monl=1,monf,monr=False,mont},
+monf=If[monr,mont=StringCases[#3,x:(DigitCharacter..):>ToExpression[x]];If[mont=!={},monpr=Last@mont];"",
+If[MatchQ[{#1,#3},{_String,_String}],mont=StringCases[#3,"Sparse reduce row echelon, cols "~~(x:DigitCharacter..):>ToExpression[x]];
+If[mont=!={},monl=Last@mont;monr=True];#1<>#3,#1]]&;
+mt=ArrayRules[m];
+vs=Variables[Last/@mt];
+subs=MapIndexed[#->(v@@#2)&,vs];
 str="
-; variables===========================
+; variables =========================
 "<>var2str[Last/@subs]<>
 "
-; matrix===========================
-"<>smat2str[SparseArray[m/.subs],"m"]<>"\[IndentingNewLine]
-; command===========================
+; matrix ============================
+"<>smat2str[SparseArray[mt/.subs,Dimensions[m]],"m"]<>"
+; turn on dislay====================
+&V;
+; command ===========================
 R"<>If[OptionValue[Reduce],"edr",""]<>"owech([m]);";
 str=StringReplace[str,(ToString[v]<>"[")~~(n:DigitCharacter..)~~"]":>"v"<>n];
 (*=========================== Run through Fermat ===========================*)
-str=FermatSession[str,Run->OptionValue[Run]];
+monbuf="";
+Monitor[
+str=FermatSession[str,monbuf,monf,Run->OptionValue[Run]],
+ProgressIndicator[monpr,{0,monl}]];
+If[!TrueQ[OptionValue[Run]],Return[str]];
+(*=========================== Postprocess ===========================*)
+res=SparseArray[Flatten[Function[row,{row[[1]],#1}->#2&@@@Rest[row]]/@str2sarr[str,"m",{"v"~~(n:DigitCharacter..):>(ToString[v]<>"[")<>n<>"]"}]/.(Reverse/@subs)],Dimensions@m];
+res
+]
+
+
+FGaussSolve::usage ="FGaussSolve[eqs,vars] solves homogeneous linear equations.";
+FGaussSolve::notimplemented ="Sorry, not implemented. Aborting...";
+
+
+Options[FGaussSolve]={Run->True,Reduce->True};
+FGaussSolve[eqs_,vars_,OptionsPattern[]]:=Module[{
+m,rvars=Reverse[vars],u=0,
+v,subs,
+str,res,
+monbuf,monpr=0,monpr1=-1,monl=1,monf,monr=False,mont},
+If[eqs==={},Return[{}]];
+monf=If[monr,mont=StringCases[#3,x:(DigitCharacter..):>ToExpression[x]];If[mont=!={},monpr=Last@mont;CProgressPrint[monpr1,monpr,monl]];"",
+If[MatchQ[{#1,#3},{_String,_String}],mont=StringCases[#3,"Sparse reduce row echelon, cols "~~(x:DigitCharacter..):>ToExpression[x]];
+If[mont=!={},monl=Last@mont;monr=True];#1<>#3,#1]]&;
+m=CoefficientArrays[eqs,rvars];
+(*=========================== check input ===========================*)
+If[Not[FreeQ[m,_Complex]],Message[FGaussSolve::notimplemented];Abort[]];
+If[Length[m]=!=2,Message[FGaussSolve::notimplemented];Abort[]];
+If[Length[ArrayRules[First[m]]]>1,
+Message[FGaussSolve::notimplemented];Abort[]];
+(*=========================== fermat input string ===========================*)
+	(*make substitutions*)
+m=ArrayRules[Last[m]];
+subs=MapIndexed[#->(v@@#2)&,Variables[Last/@m]];
+(*CPrint["Pivoting: &(u="<>ToString[u]<>");"];*)
+str="
+; variables =========================
+"<>var2str[Last/@subs]<>
+"
+; matrix ============================
+"<>smat2str[SparseArray[m/.subs,{Length@eqs,Length@vars}],"m"]<>"
+; turn on dislay====================
+&V;
+; choose pivoting strategy
+&(u="<>ToString[u]<>");
+; command ===========================
+R"<>If[OptionValue[Reduce],"edr",""]<>"owech([m]);";
+str=StringReplace[str,(ToString[v]<>"[")~~(n:DigitCharacter..)~~"]":>"v"<>n];
+(*=========================== Run through Fermat ===========================*)
+monbuf="";monl=Length@vars;
+CMonitor[
+str=FermatSession[str,monbuf,monf,Run->OptionValue[Run]],
+Overlay[{ProgressIndicator[monpr,{0,monl}],"GS:"<>ToString[monpr]<>"/"<>ToString[monl]},Alignment->Center],1];
 If[!TrueQ[OptionValue[Run]],Return[str]];
 (*=========================== Postprocess ===========================*)
 res=First[#][[1]]->-1/First[#][[2]] Plus@@Times@@@Rest[#]&/@
 MapAt[rvars[[#]]&,(Rest/@str2sarr[str,"m",{"v"~~(n:DigitCharacter..):>(ToString[v]<>"[")<>n<>"]"}]/.(Reverse/@subs)),{All,All,1}];
+res
+]
+
+
+Options[FTogether]={Run->True};
+
+
+FTogether::usage="FTogether[m_?MatrixQ] simply reads in the matrix and writes back. Since Fermat automatically makes \"Together\" we have what we want."
+
+
+FTogether[s:Except[_List],opts:OptionsPattern[]]:=FTogether[{{s}},opts][[1,1]]
+FTogether[v_?VectorQ,opts:OptionsPattern[]]:=First[FTogether[{v},opts]]
+
+
+FTogether[m_?MatrixQ,OptionsPattern[]]:=Module[{
+subs,v,
+str,fs,
+res},
+(*=========================== check input ===========================*)
+(*=========================== fermat input string ===========================*)
+subs=MapIndexed[#->(v@@#2)&,Variables[m]];
+str="
+; variables===========================
+"<>var2str[Last/@subs]<>"
+; matrix===========================
+"<>mat2str[m/.subs,"m"]<>"
+;";
+str=StringReplace[str,(ToString[v]<>"[")~~(n:DigitCharacter..)~~"]":>"v"<>n];
+(*=========================== Run through Fermat ===========================*)
+str=FermatSession[str,Run->OptionValue[Run]];
+(*=========================== Postprocess ===========================*)
+res=Hold[str2mat[fs[#],"m",{"v"~~(n:DigitCharacter..):>(ToString[v]<>"[")<>n<>"]"}]/.#2]&[str,(Reverse/@subs)];
+If[!TrueQ[OptionValue[Run]],Return[res/.fs->(FermatSession@*ReadString)]];
+res=ReleaseHold[res/.fs->Identity];
 res
 ]
 
@@ -664,12 +776,17 @@ Module[{dummy},
 FermatSession[str_String,monitor_Symbol:dummy,mfunc:Except[_Rule|_RuleDelayed]:(#2&),OptionsPattern[]]:=
 Module[
 {file,
-in=Replace[OptionValue[In],Automatic:>uniquefile["in"]],
-out=Replace[OptionValue[Out],Automatic:>uniquefile["out"]],
-fer,log={},line,error=False,
-cleanup,res},
-cleanup=(Quiet[Close[ProcessConnection[fer,#]]&/@{"StandardInput","StandardOutput","StandardError"}];)&;
+fname,
+in,
+out,
+fer,log={},new,buf="",p,line,error=False,
+cleanup,res,delay=2^-20},
+in=Replace[OptionValue[In],Automatic:>uniquefile["in"]];
 file=OpenWrite[in];
+out=Replace[OptionValue[Out],Automatic:>uniquefile["out"]];
+Close[OpenWrite[out]];
+fname=FileNameTake@ToString[$FermatCMD]<>" <"<>FileNameTake@in<>" >"<>FileNameTake@out<>"";
+cleanup=(Quiet[Close[ProcessConnection[fer,#]]&/@{"StandardInput","StandardOutput","StandardError"}];)&;
 WriteString[file,ReadString[#]]&/@OptionValue[LibraryLoad];
 WriteString[file,FermatSession::switches<>"
 "<>str<>"
@@ -679,21 +796,34 @@ WriteString[file,FermatSession::switches<>"
 &x;"];
 Close[file];
 If[!OptionValue[Run],Return[in]];
-FCStaticMonitor[
+CStaticMonitor[
 CheckAbort[
 Check[fer=StartProcess[$FermatCMD],Message[FermatSession::fail,$FermatCMD];cleanup[];DeleteFile[{in,out}];KillProcess[fer];Abort[]];
 (*WriteLine[fer,"&(R='"<>#<>"');"]&/@OptionValue[LibraryLoad];*)
 WriteLine[fer,"&(R='"<>in<>"');"];
 While[ProcessStatus[fer]=="Running",
-line=ReadLine[fer];
-If[line=!=EndOfFile,If[StringMatchQ[line,(StartOfString~~"\\*\\*\\*"~~__)],AppendTo[log,Style[line,Red]];monitor=mfunc[monitor,line];error=True,
+(*Added 25.05.2020*)Pause[delay];delay=Min[1,2*delay];(*/Added 25.05.2020*)
+new=ReadString[fer,EndOfBuffer];(*read to the end of the bufer*)
+(*Modified 25.05.2020*)Switch[new(*Not@MatchQ[new,EndOfBuffer|EndOfFile]*),
+EndOfFile|EndOfBuffer,Null,
+_,buf=buf<>new;line="";
+While[line=!=EndOfFile,If[{}===(p=StringPosition[buf,"\n",1]),line=EndOfFile,line=StringTake[buf,p[[1,1]]-1];buf=StringDrop[buf,p[[1,2]]]];
+If[line=!=EndOfFile,
+If[StringMatchQ[line,(StartOfString~~"\\*\\*\\*"~~__)],
+AppendTo[log,Style[line,Red]];
+error=True
+,
 AppendTo[log,line];
-monitor=mfunc[monitor,line];
-If[StringMatchQ[line,"*>"]&&error,Print[Sequence@@(Style[#,Small]&/@Riffle[log,"\n"])];cleanup[];DeleteFile[{in,out}];KillProcess[fer];Abort[]]]];
+If[StringMatchQ[line,"*>"]&&error,Print[Sequence@@(Style[#,Small]&/@Riffle[log,"\n"])];
+cleanup[];DeleteFile[{in,out}];KillProcess[fer];Abort[]]]
+];
+monitor=mfunc[monitor,Replace[line,EndOfFile->""],new]
+];
+](*/Modified 25.05.2020*)
 ];,
 (*Clean up if user aborts evaluation*)
 cleanup[];DeleteFile[{in,out}];KillProcess[fer];Abort[]
-],"Running Fermat...",1];
+],fname,1];
 If[OptionValue[DeleteFile],
 res=ReadString[out,EndOfFile];
 cleanup[];

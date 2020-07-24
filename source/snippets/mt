@@ -10,7 +10,7 @@
 ; LQMTerm(quoly,poly1) --- leding term of quoly modulo poly1;
 
 
-; &(J=infty); {somehow too slow}
+;&(J=infty); {somehow too slow}
 
 Function PolyQ(poly1) =
 {PolyQ gives True if p is polynomial in the highest var}
@@ -22,7 +22,6 @@ Function Lc(poly1) =
 
 qRmndr := 0;
 Function Rmndr(poly1,poly2,rem,coef) =
-; Corrected version of Remquot(poly1,poly2,qRmndr)
   if  poly1=0 or Deg(poly2) = 0 then
     rem := 0;
     qRmndr := poly1/poly2
@@ -30,7 +29,7 @@ Function Rmndr(poly1,poly2,rem,coef) =
     rem := Remquot(poly1,Numer(poly2),qRmndr);
     coef := poly1/(qRmndr*Numer(poly2)+rem);
     rem := coef*rem;
-    qRmndr := coef*qRmndr*Denom(poly2)
+    qRmndr := coef*qRmndr*Denom(poly2);
   fi;
   rem.;
 
@@ -73,7 +72,9 @@ Function QuolyMod(quoly,poly1, tmp, res) =
     res := 0
   else
     res := Numer(quoly)*InvertMod(Denom(quoly),poly1);
-    res := Rmndr(res,poly1);
+    den := Denom(res);
+    res := Numer(res);
+    res := Rmndr(res,poly1)/den;
   fi;
   res.;
 
@@ -85,18 +86,26 @@ Function LQMOrder(quoly,poly1, tmp, k, res) =
     if tmp = 0 then &> fi;
     if quoly = 0 then &> fi;
     k := 0;
-    tmp:=Denom(quoly);
+    res:=Numer(quoly);
+    den:=Denom(quoly);
     while 1 do
-      rem := Remquot(tmp,poly1,tmp);
-      if Nlcoef(rem)<> 0 then &> fi;
+      if Deg(Denom(den)) > 0 then &> fi;
+      tmp := Deg(GCD(den,poly1));
+      if tmp = 0 then &> fi;
+      den := den/poly1;
       k:-;
     od;
-    tmp:=Numer(quoly);
     while 1 do
-      rem := Remquot(tmp,poly1,tmp);
-      if Nlcoef(rem)<> 0 then &> fi;
+      if Deg(Denom(res)) > 0 then &> fi;
+      tmp := Deg(GCD(res,poly1));
+      if tmp = 0 then &> fi;
+      res := res/poly1;
       k:+;
     od;
+    if Deg(Denom(res)) > 0 then
+      res := res*poly1;
+      k:-;
+    fi;
     &>;
   od;
   k.;

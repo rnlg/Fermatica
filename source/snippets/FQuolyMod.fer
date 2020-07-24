@@ -22,12 +22,6 @@ Array m[<<r>>,<<c>>];
 poly:=<<poly>>;
 
 ; ============== Program ==============
-
-for i = 1,<<r>> do
-  for j = 1,<<c>> do
-    m[i,j] := QuolyMod(m[i,j],poly)
-  od
-od;
-
+    [m] := [<i=1,<<r>>><j=1,<<c>>> QuolyMod(m[i,j],poly)];
 ; ============== Clean up ==============
 ; @(poly);
