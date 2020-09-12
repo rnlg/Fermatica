@@ -29,7 +29,7 @@ $FermatTempDir="/dev/shm/";
 
 
 FermatDetachedSession;GetOutput;GetInput;
-FermatSession;
+FermatSession;ParallelFermatSessions;
 FDot;
 FDotBig;
 FPlus;
@@ -271,6 +271,26 @@ str=FermatSession[str,Run->OptionValue[Run]];
 If[!TrueQ[OptionValue[Run]],Return[str]];
 (*=========================== Postprocess ===========================*)
 res=str2mat[str,"mi",{"v"~~(n:DigitCharacter..):>(ToString[v]<>"[")<>n<>"]"}]/.(Reverse/@subs);
+res
+]
+
+
+FInverse[ms:{__?SquareMatrixQ},OptionsPattern[]]:=Module[{
+l,v,subs,sub,strs,str,res},
+(*=========================== check input ===========================*)
+If[Not[FreeQ[ms,_Complex]],Print["Sorry, can not treat complex numbers in matrix."];Abort[]];
+(*=========================== fermat input string ===========================*)
+	(*make substitutions*)
+{strs,subs}=Transpose[Function[m,
+l=Length@m;sub=MapIndexed[#->(v@@#2)&,Variables[m]];str="\n; variables===========================\n"<>var2str[Last/@sub]<>"\n; matrix===========================\n"<>mat2str[m/.sub,"m"]<>"\n\n; command===========================\n[mi]:=[m]^-1;\n\n; clean up===========================\n@([m]);";
+str=StringReplace[str,(ToString[v]<>"[")~~(n:DigitCharacter..)~~"]":>"v"<>n];
+{str,sub}
+]/@ms];
+(*=========================== Run through Fermat ===========================*)
+strs=FermatSession[strs,Run->OptionValue[Run]];
+If[!TrueQ[OptionValue[Run]],Return[strs]];
+(*=========================== Postprocess ===========================*)
+res=MapThread[(str2mat[#,"mi",{"v"~~(n:DigitCharacter..):>(ToString[v]<>"[")<>n<>"]"}]/.(Reverse/@#2))&,{strs,subs}];
 res
 ]
 
@@ -768,71 +788,103 @@ Background->False,(*whether to run in Background*)
 DeleteFile->True,
 In->Automatic,
 Out->Automatic,
-LibraryLoad->{}(*Library files to load*)
+LibraryLoad->{}
 };
 
 
 Module[{dummy},
-FermatSession[str_String,monitor_Symbol:dummy,mfunc:Except[_Rule|_RuleDelayed]:(#2&),OptionsPattern[]]:=
+FermatSession[str_String,monitor_Symbol:dummy,mfunc:Except[_Rule|_RuleDelayed]:(#2&),opts:OptionsPattern[]]:=
 Module[
+{in,out,res,delay},
+{in,out}=PrepareInOut[str,FilterRules[{opts},Options[PrepareInOut]]];
+If[!OptionValue[Run],Return[in]];
+ParallelRun[{{in,out}},{monitor},mfunc[#1,#2,#3]&];
+If[OptionValue[DeleteFile],
+res=ReadString[out,EndOfFile];DeleteFile[{in,out}],
+res=out;DeleteFile[in];
+];
+res
+];
+FermatSession[strs:{__String},monitor_Symbol:dummy,mfunc:Except[_Rule|_RuleDelayed]:(#2&),opts:OptionsPattern[]]:=
+Module[
+{inouts,res,delay},
+inouts=PrepareInOut[#,FilterRules[{opts},Options[PrepareInOut]]]&/@strs;
+If[!OptionValue[Run],Return[First/@inouts]];
+
+ParallelRun[inouts,monitor,mfunc];
+If[OptionValue[DeleteFile],
+res=ReadString[Last@#,EndOfFile]&/@inouts;DeleteFile[Flatten[inouts]],
+res=Last/@inouts;DeleteFile[First/@inouts];
+];
+res
+]
+];
+
+
+Options[PrepareInOut]:=Thread[{In,Out,LibraryLoad}->({In,Out,LibraryLoad}/.Options[FermatSession])];
+
+
+PrepareInOut[str_String,OptionsPattern[]]:=Module[
 {file,
-fname,
 in,
-out,
-fer,log={},new,buf="",p,line,error=False,
-cleanup,res,delay=2^-20},
+out},
+If[str==="",Print["Fermatica`Private`PrepareInOut: zero string received"];Abort[]];
 in=Replace[OptionValue[In],Automatic:>uniquefile["in"]];
 file=OpenWrite[in];
 out=Replace[OptionValue[Out],Automatic:>uniquefile["out"]];
-Close[OpenWrite[out]];
-fname=FileNameTake@ToString[$FermatCMD]<>" <"<>FileNameTake@in<>" >"<>FileNameTake@out<>"";
-cleanup=(Quiet[Close[ProcessConnection[fer,#]]&/@{"StandardInput","StandardOutput","StandardError"}];)&;
+Close[OpenWrite[out]];(*\[DoubleLongLeftArrow] reserve output file*)
 WriteString[file,ReadString[#]]&/@OptionValue[LibraryLoad];
-WriteString[file,FermatSession::switches<>"
-"<>str<>"
-&(S='"<>out<>"');
-&s;
-&q;
-&x;"];
+WriteString[file,FermatSession::switches<>"\n"<>str<>"\n&(S='"<>out<>"');\n&s;\n&q;\n&x;"];
 Close[file];
-If[!OptionValue[Run],Return[in]];
-CStaticMonitor[
-CheckAbort[
-Check[fer=StartProcess[$FermatCMD],Message[FermatSession::fail,$FermatCMD];cleanup[];DeleteFile[{in,out}];KillProcess[fer];Abort[]];
-(*WriteLine[fer,"&(R='"<>#<>"');"]&/@OptionValue[LibraryLoad];*)
-WriteLine[fer,"&(R='"<>in<>"');"];
-While[ProcessStatus[fer]=="Running",
-(*Added 25.05.2020*)Pause[delay];delay=Min[1,2*delay];(*/Added 25.05.2020*)
-new=ReadString[fer,EndOfBuffer];(*read to the end of the bufer*)
-(*Modified 25.05.2020*)Switch[new(*Not@MatchQ[new,EndOfBuffer|EndOfFile]*),
+Return[{in,out}]
+]
+
+
+SetAttributes[ParallelRun,HoldRest];
+
+
+Module[{dummy},
+ParallelRun[inouts:{{_String,_String}..},monitors:(_Symbol|_List):dummy,mfunc:Except[_Rule|_RuleDelayed]:(#2&)]:=Module[
+{ins=First/@inouts,n,fcommands,logs,fermats,buffers,new,line,p,error=False,cleanup,delay=2^-20},
+fcommands=StringRiffle[(FileNameTake@ToString[$FermatCMD]<>" <"<>FileNameTake@#1<>" >"<>FileNameTake@#2<>"")&@@@inouts,"\n"];
+n=Length@ins;
+cleanup=(Quiet[Outer[Close@*ProcessConnection,#,{"StandardInput","StandardOutput","StandardError"}]];KillProcess/@#)&;
+CStaticMonitor[CheckAbort[
+(*start fermat workers*)
+Check[fermats=Table[StartProcess[$FermatCMD],{n}],Message[FermatSession::fail,$FermatCMD];cleanup[fermats];(*DeleteFile[Flatten[inouts]];*)
+Abort[]];
+(*prepare buffers*)
+buffers=ConstantArray["",n];
+logs=ConstantArray[{},n];
+(*load in files fermat workers*)
+MapThread[WriteLine[#1,"&(R='"<>#2<>"');"]&,{fermats,ins}];
+While[AnyTrue[fermats,ProcessStatus[#]==="Running"&],
+Pause[delay];If[delay<1,delay=2*delay];
+Do[new=ReadString[fermats[[i]],EndOfBuffer];(*read to the end of the bufer*)
+(*Modified 25.05.2020*)Switch[new,
 EndOfFile|EndOfBuffer,Null,
-_,buf=buf<>new;line="";
-While[line=!=EndOfFile,If[{}===(p=StringPosition[buf,"\n",1]),line=EndOfFile,line=StringTake[buf,p[[1,1]]-1];buf=StringDrop[buf,p[[1,2]]]];
+_,buffers[[i]]=buffers[[i]]<>new;
+line="";
+While[line=!=EndOfFile,
+If[{}===(p=StringPosition[buffers[[i]],"\n",1]),line=EndOfFile,line=StringTake[buffers[[i]],p[[1,1]]-1];buffers[[i]]=StringDrop[buffers[[i]],p[[1,2]]]];
 If[line=!=EndOfFile,
 If[StringMatchQ[line,(StartOfString~~"\\*\\*\\*"~~__)],
-AppendTo[log,Style[line,Red]];
+logs[[i]]=Append[logs[[i]],Style[line,Red]];
 error=True
 ,
-AppendTo[log,line];
-If[StringMatchQ[line,"*>"]&&error,Print[Sequence@@(Style[#,Small]&/@Riffle[log,"\n"])];
-cleanup[];DeleteFile[{in,out}];KillProcess[fer];Abort[]]]
+logs[[i]]=Append[logs[[i]],line];
+If[StringMatchQ[line,"*>"]&&error,Print[Sequence@@(Style[#,Small]&/@Riffle[logs[[i]],"\n"])];
+cleanup[];Abort[]]]
 ];
-monitor=mfunc[monitor,Replace[line,EndOfFile->""],new]
-];
-](*/Modified 25.05.2020*)
-];,
-(*Clean up if user aborts evaluation*)
-cleanup[];DeleteFile[{in,out}];KillProcess[fer];Abort[]
-],fname,1];
-If[OptionValue[DeleteFile],
-res=ReadString[out,EndOfFile];
-cleanup[];
-DeleteFile[{in,out}];
-res,
-cleanup[];
-DeleteFile[in];
-out
-]
+If[Head[Unevaluated[monitors]]===List,
+(#=mfunc[Evaluate[#],Replace[line,EndOfFile->""],new])&[ReleaseHold[Map[Unevaluated,Hold[monitors],{2}]][[i]]],
+monitors[[i]]=mfunc[monitors[[i]],Replace[line,EndOfFile->""],new]]
+]]
+,{i,n}]
+],
+
+cleanup[fermats];Abort[]],fcommands,1];
+cleanup[fermats];
 ]
 ];
 
