@@ -1,0 +1,8 @@
+Installation
+============
+1. Copy the content of the 'Source/' directory to the desired location, say `home/of/Fermatica`
+2. Change to this location with `cd home/of/Fermatica`
+3. Run `math -script makeShortcut.m`
+
+Result: 
+You can load Fermatica package from Mathematica session with <<Fermatica`

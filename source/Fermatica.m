@@ -25,7 +25,7 @@ BeginPackage["Fermatica`"]
 $FermatCMD=Environment["FERMATPATH"];
 
 
-$FermatTempDir="/dev/shm/";
+$FermatTempDir=$TemporaryDirectory<>"/";
 
 
 FermatDetachedSession;GetOutput;GetInput;
@@ -796,6 +796,7 @@ Module[{dummy},
 FermatSession[str_String,monitor_Symbol:dummy,mfunc:Except[_Rule|_RuleDelayed]:(#2&),opts:OptionsPattern[]]:=
 Module[
 {in,out,res,delay},
+If[!MatchQ[$FermatCMD,_String],Print["To use Fermat CAS, set $FermatCMD to the fermat executable full path with\n    $FermatCMD=\"path/to/fer64\";\nAlternatively, you may set the system environment variable FERMATPATH to the same path."];Return[$Failed]];
 {in,out}=PrepareInOut[str,FilterRules[{opts},Options[PrepareInOut]]];
 If[!OptionValue[Run],Return[in]];
 ParallelRun[{{in,out}},{monitor},mfunc[#1,#2,#3]&];
@@ -808,6 +809,7 @@ res
 FermatSession[strs:{__String},monitor_Symbol:dummy,mfunc:Except[_Rule|_RuleDelayed]:(#2&),opts:OptionsPattern[]]:=
 Module[
 {inouts,res,delay},
+If[!MatchQ[$FermatCMD,_String],Print["To use Fermat CAS, set $FermatCMD to the fermat executable full path with\n    $FermatCMD=\"path/to/fer64\";\nAlternatively, you may set the system environment variable FERMATPATH to the same path."];Return[$Failed]];
 inouts=PrepareInOut[#,FilterRules[{opts},Options[PrepareInOut]]]&/@strs;
 If[!OptionValue[Run],Return[First/@inouts]];
 
