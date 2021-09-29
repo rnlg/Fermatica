@@ -22,14 +22,14 @@
 BeginPackage["Fermatica`"]
 
 
-$FermatCMD=Environment["FERMATPATH"];
+$FermatCMD(*=Environment["FERMATPATH"]*);
 
 
 $FermatTempDir=$TemporaryDirectory<>"/";
 
 
 FermatDetachedSession;GetOutput;GetInput;
-FermatSession;ParallelFermatSessions;
+FermatSession;ParallelFermatSessions;FermatCoroutine;
 FDot;
 FDotBig;
 FPlus;
@@ -43,12 +43,18 @@ FQuolyMod;
 FPolyLeadingTerm;FPolyLeadingOrder;
 FGaussSolve;
 FTogether;
+FCollect;
+
+
+FSeries;
+FSeriesCoefficient;
 
 
 $FermaticaHomeDirectory=DirectoryName[$InputFileName];
 
 
 $FermaticaVersion="1.01";
+$FermatVersionString="";
 
 
 System`PartitionWithRemainder::usage="PartitionWithRemainder[list,size] does the same as Partition[list,size], but does not omit the trailing elements if the chunk size does not divide list length.\nE.g. PartitionWithRemainder[{a,b,c,d,e,f,g,h},3] yields {{a,b,c},{d,e,f},{g,h}}.\n Works also for multidimensional arrays.";
@@ -110,8 +116,14 @@ If[i>=l,CWrite["]\n"]]
 ];
 
 
+$FermatCMD/:Set[$FermatCMD,path_String]:=(OwnValues[$FermatCMD]={HoldPattern[$FermatCMD]:>Evaluate[Quiet[Check[fermat=StartProcess[path];WriteString[fermat,"&q\n"];$FermatVersionString=StringTrim[ReadString[fermat,"(c)"]];path,$Failed]]]};CPrint[If[$FermatCMD=!=$Failed,ToString[$FermatCMD]<>":\n"<>$FermatVersionString,Style["Set $FermatCMD to a valid path for fer64.",{Bold}]]];$FermatCMD)
+
+
 CPrint["\n******************** ",Style["Fermatica v"<>ToString[$FermaticaVersion],{Bold}]," ********************\n\
-Inteface to ",Hyperlink["Fermat CAS", "http://home.bway.net/lewis/"],".\n\[Copyright] Roman N. Lee, 2018.\nRead from: "<>$InputFileName<>" (CRC32: "<>ToString[FileHash[$InputFileName,"CRC32"]]<>")","\n\n$FermatCMD=\""<>ToString[$FermatCMD]<>"\""]
+Inteface to ",Hyperlink["Fermat CAS", "http://home.bway.net/lewis/"],".\n\[Copyright] Roman N. Lee, 2018.\nRead from: "<>$InputFileName<>" (CRC32: "<>ToString[FileHash[$InputFileName,"CRC32"]]<>")"(*,If[$FermatCMD=!=$Failed,ToString[$FermatCMD]<>":\n"<>$FermatVersionString,Style["Set $FermatCMD to a valid path for fer64.",{Bold}]]*)]
+
+
+$FermatCMD=Environment["FERMATPATH"];
 
 
 Options[FDot]={Run->True};
@@ -356,7 +368,7 @@ subs=Append[DeleteCases[Variables[{m,poly}],x],x],
 v,i,
 str,
 templ,file,
-res},
+res,mon=0},
 {r,c}=Dimensions[m];
 (*=========================== check input ===========================*)
 If[Not[FreeQ[{m,poly},_Complex]],Print["Sorry, can not treat complex numbers."];Abort[]];
@@ -368,7 +380,8 @@ subs=MapIndexed[#->(v@@#2)&,subs];
 str=StringReplace[templ,{"<<vars>>"->var2str[Last/@subs],"<<r>>"->ToString[r],"<<c>>"->ToString[c],"<<M>>"->imat2str[m/.subs],"<<poly>>"->ToString[poly/.subs,InputForm]}];
 str=StringReplace[str,(ToString[v]<>"[")~~(n:DigitCharacter..)~~"]":>"v"<>n];
 (*=========================== Run through Fermat ===========================*)
-str=FermatSession[str,LibraryLoad->{$FermaticaHomeDirectory<>"snippets/ModTools.lib.fer"},Run->OptionValue[Run]];
+(*CMonitor[code_,mon_,delay_:0,msg_String:""]*)
+CMonitor[str=FermatSession[str,mon,Which[StringMatchQ[#2,"QuolyMod*"],#1+1,True,#1]&,LibraryLoad->{$FermaticaHomeDirectory<>"snippets/ModTools.lib.fer"},Run->OptionValue[Run]],ProgressIndicator[mon,{0,r}],1,"QuolyModding..."];
 (*=========================== Postprocess ===========================*)
 If[!TrueQ[OptionValue[Run]],Return[str]];res=str2mat[str,"m",{"v"~~(n:DigitCharacter..):>(ToString[v]<>"[")<>n<>"]"}]/.(Reverse/@subs);
 res
@@ -377,6 +390,112 @@ res
 
 FQuolyMod[ex_,x_Symbol->poly_,opts:OptionsPattern[]]:=FQuolyMod[ex,poly,x,opts]
 FQuolyMod[ex_,list_List,opts:OptionsPattern[]]:=Fold[FQuolyMod[#1,#2,opts]&,ex,list]
+
+
+Options[FSeries]={Run->True(*,Normal\[Rule]True*)};
+
+
+FSeries[quoly:Except[_List],{x_Symbol,x0_,o_Integer},OptionsPattern[]]:=Module[{
+subs=Append[DeleteCases[Variables[{quoly,x0}],x],x],
+v,i,
+str,
+templ,
+coefs,lo,
+res},
+(*=========================== check input ===========================*)
+If[Not[FreeQ[{quoly},_Complex]],Print["Sorry, can not treat complex numbers."];Abort[]];
+(*=========================== fermat input string ===========================*)
+subs=MapIndexed[#->(v@@#2)&,subs];
+str=var2str[Last/@subs]<>"
+quoly := "<>ToString[quoly/.subs,InputForm]<>";
+Series(quoly, "<>ToString[x/.subs,InputForm]<>", "<>ToString[x0/.subs,InputForm]<>", "<>ToString[o,InputForm]<>");";
+str=StringReplace[str,(ToString[v]<>"[")~~(n:DigitCharacter..)~~"]":>"v"<>n];
+(*=========================== Run through Fermat ===========================*)
+str=FermatSession[str,LibraryLoad->{$FermaticaHomeDirectory<>"snippets/FSeries.lib.fer"},Run->OptionValue[Run]];
+If[!OptionValue[Run],Return[str]];
+(*=========================== Postprocess ===========================*)
+coefs=str2lst[str,"cSeries",{"v"~~(n:DigitCharacter..):>(ToString[v]<>"[")<>n<>"]"}]/.(Reverse/@subs);
+lo=str2scl[str,"oSeries",{}];
+res=SeriesData[x,x0,coefs,lo,lo+Length[coefs],1];
+res
+]
+
+
+FSeries[m_?MatrixQ,{x_Symbol,x0_,o_Integer},OptionsPattern[]]:=Module[{
+r,c,
+subs=Append[DeleteCases[Variables[{m,x0}],x],x],
+v,i,
+str,
+templ,file,
+res,mon=0},
+{r,c}=Dimensions[m];
+(*=========================== check input ===========================*)
+file=OpenRead[$FermaticaHomeDirectory<>"snippets/FSeries.fer"];
+Check[templ="\n\n"<>ReadString[file,EndOfFile],Abort[]];
+Close[file];
+(*=========================== fermat input string ===========================*)
+subs=MapIndexed[#->(v@@#2)&,subs];
+str=StringReplace[templ,{"<<vars>>"->var2str[Last/@subs],"<<var>>"->ToString[x/.subs,InputForm],"<<var0>>"->ToString[x0/.subs,InputForm],"<<r>>"->ToString[r],"<<c>>"->ToString[c],"<<M>>"->imat2str[m/.subs],"<<order>>"->ToString[o,InputForm]}];
+str=StringReplace[str,(ToString[v]<>"[")~~(n:DigitCharacter..)~~"]":>"v"<>n];
+(*=========================== Run through Fermat ===========================*)
+(*CMonitor[code_,mon_,delay_:0,msg_String:""]*)
+CMonitor[str=FermatSession[str,mon,Which[StringMatchQ[#2,"Series*"],#1+1,True,#1]&,LibraryLoad->{$FermaticaHomeDirectory<>"snippets/FSeries.lib.fer"},Run->OptionValue[Run]],ProgressIndicator[mon,{0,r}],1,"FSeries..."];
+(*=========================== Postprocess ===========================*)
+If[!TrueQ[OptionValue[Run]],Return[str]];res=str2mat[str,"m",{"v"~~(n:DigitCharacter..):>(ToString[v]<>"[")<>n<>"]"}]/.(Reverse/@subs);
+res+Series[x-x0,{x,x0,0}]*(x-x0)^o
+]
+
+
+Options[FSeriesCoefficient]={Run->True(*,Normal\[Rule]True*)};
+
+
+FSeriesCoefficient[quoly:Except[_List],{x_Symbol,x0:Except[Infinity],o_Integer},OptionsPattern[]]:=Module[{
+subs=Append[DeleteCases[Variables[{quoly}],x],x],
+v,i,
+str,
+templ,
+coefs,lo,
+res},
+(*=========================== check input ===========================*)
+If[Not[FreeQ[{quoly},_Complex]],Print["Sorry, can not treat complex numbers."];Abort[]];
+(*=========================== fermat input string ===========================*)
+subs=MapIndexed[#->(v@@#2)&,subs];
+str=var2str[Last/@subs]<>"
+quoly := "<>ToString[quoly/.subs,InputForm]<>";
+coef:=SerCoef(quoly, "<>ToString[x/.subs,InputForm]<>", "<>ToString[x0/.subs,InputForm]<>", "<>ToString[o,InputForm]<>");";
+str=StringReplace[str,(ToString[v]<>"[")~~(n:DigitCharacter..)~~"]":>"v"<>n];
+(*=========================== Run through Fermat ===========================*)
+str=FermatSession[str,LibraryLoad->{$FermaticaHomeDirectory<>"snippets/FSeries.lib.fer"},Run->OptionValue[Run]];
+If[!OptionValue[Run],Return[str]];
+(*=========================== Postprocess ===========================*)
+res=str2scl[str,"coef",{"v"~~(n:DigitCharacter..):>(ToString[v]<>"[")<>n<>"]"}]/.(Reverse/@subs);
+res
+]
+
+
+FSeriesCoefficient[m_?MatrixQ,{x_Symbol,x0:Except[Infinity],o_Integer},OptionsPattern[]]:=Module[{
+r,c,
+subs=Append[DeleteCases[Variables[{m,x0}],x],x],
+v,i,
+str,
+templ,file,
+res,mon=0},
+{r,c}=Dimensions[m];
+(*=========================== check input ===========================*)
+file=OpenRead[$FermaticaHomeDirectory<>"snippets/FSeriesCoefficient.fer"];
+Check[templ="\n\n"<>ReadString[file,EndOfFile],Abort[]];
+Close[file];
+(*=========================== fermat input string ===========================*)
+subs=MapIndexed[#->(v@@#2)&,subs];
+str=StringReplace[templ,{"<<vars>>"->var2str[Last/@subs],"<<var>>"->ToString[x/.subs,InputForm],"<<var0>>"->ToString[x0/.subs,InputForm],"<<r>>"->ToString[r],"<<c>>"->ToString[c],"<<M>>"->imat2str[m/.subs],"<<order>>"->ToString[o,InputForm]}];
+str=StringReplace[str,(ToString[v]<>"[")~~(n:DigitCharacter..)~~"]":>"v"<>n];
+(*=========================== Run through Fermat ===========================*)
+(*CMonitor[code_,mon_,delay_:0,msg_String:""]*)
+CMonitor[str=FermatSession[str,mon,Which[StringMatchQ[#2,"Series*"],#1+1,True,#1]&,LibraryLoad->{$FermaticaHomeDirectory<>"snippets/FSeries.lib.fer"},Run->OptionValue[Run]],ProgressIndicator[mon,{0,r}],1,"FSeries..."];
+(*=========================== Postprocess ===========================*)
+If[!TrueQ[OptionValue[Run]],Return[str]];res=str2mat[str,"m",{"v"~~(n:DigitCharacter..):>(ToString[v]<>"[")<>n<>"]"}]/.(Reverse/@subs);
+res
+]
 
 
 todo["Redefine FPolyLeadingTerm for matrices."];
@@ -770,6 +889,20 @@ res
 ]
 
 
+FCollect::usage="FCollect[\[Ellipsis]] simply reads in the matrix and writes back. Since Fermat automatically makes \"Together\" we have what we want."
+
+
+FCollect[expr_,pat_]:=Module[{cs={},cdefs={},res},
+res=Collect[expr,pat,
+Function[coef,
+(AppendTo[cs,#];AppendTo[cdefs,coef];#)&[Unique["c"]]
+]
+]/.Thread[cs->FTogether[cdefs]];
+Remove/@cs;
+res
+]
+
+
 FermatSession::fail="Something went wrong when invoking fermat with \"`1`\". Setting variable $FermatCMD to different value might help.";
 
 
@@ -875,7 +1008,7 @@ logs[[i]]=Append[logs[[i]],Style[line,Red]];
 error=True
 ,
 logs[[i]]=Append[logs[[i]],line];
-If[StringMatchQ[line,"*>"]&&error,Print[Sequence@@(Style[#,Small]&/@Riffle[logs[[i]],"\n"])];
+If[StringMatchQ[line,"*>"]&&error,Print["Error while executing "<>(StringSplit[fcommands,"\n"][[i]])];Print[Sequence@@(Style[#,Small]&/@Riffle[logs[[i]],"\n"])];
 cleanup[];Abort[]]]
 ];
 If[Head[Unevaluated[monitors]]===List,
@@ -942,6 +1075,35 @@ ReadString[in,EndOfFile]
 ]
 
 
+FermatCoroutine::usage="FermatCoroutine[ps] starts Fermat process and assigns the process handle to ps[ProcessObject]. Procedures based on FermatCoroutine are supposed to interact with fermat many times via write-monitor-read cycle. Common data is supposed to be stored as ps[data1] etc.";
+
+
+Options[FermatCoroutine]={ProcessDirectory->Inherited};
+
+
+SetAttributes[FermatCoroutine,HoldFirst];
+
+
+FermatCoroutine::cont="Use `1`[Continue] to continue. Use `1`[KillProcess] to kill process.";
+
+
+FermatCoroutine[ps_,OptionsPattern[]]:=Module[{fermat,line},
+ps[ProcessObject]=fermat=StartProcess[$FermatCMD,ProcessDirectory->OptionValue[ProcessDirectory]];
+WriteLine[fermat,"!"];While[ReadLine[fermat]=!=">",Continue[]];ReadString[fermat,EndOfBuffer];
+ps[ProcessStatus]:=ProcessStatus[ps[ProcessObject]];
+ps[KillProcess]:=KillProcess[ps[ProcessObject]];
+ps[Run,commands_List,addtomonitor_:Identity]:=StringRiffle[ps[Run,#,addtomonitor]&/@commands,"\n"];
+ps[Run,command_String,addtomonitor_:Identity]:=(
+ps[Run]=command;
+ps[SeedRandom]=StringReplace[ToString[RandomReal[]],"0."->"ready"];WriteLine[ps[ProcessObject],command<>";!!('"<>ps[SeedRandom]<>"');!"]; ps[Out]="";ps[Continue,addtomonitor]); 
+ps[Continue,addtomonitor_:Identity]:=CheckAbort[
+While[(line=ReadLine[ps[ProcessObject]])=!=">"<>ps[SeedRandom],line=StringReplace[line,{StartOfLine~~">"->">"<>ToString[Style[ps[Run],Blue],TraditionalForm]<>"\n",s:(StartOfLine~~"***"~~__):>ToString[Style[s,Red],TraditionalForm]}];addtomonitor[line];ps[Out]=ps[Out]<>"\n"<>line];ReadString[ps[ProcessObject],EndOfBuffer];ps[Out],Message[FermatCoroutine::cont,ps];Abort[]];
+ps[ReadString,t_:EndOfBuffer]:=ReadString[ps[ProcessObject],t];
+ps[Save,fn_String,data_String]:=ps[Run,{"&(S='"<>fn<>"')","!(&o,"<>data<>")","&(S=@)"}];
+ps[Exit]:=(While[ps[ProcessStatus]=!="Finished",WriteString[fermat,"&q"]];);True
+]
+
+
 fermatspecials={"&_n":>"",a1:DigitCharacter~~" "~~a2:DigitCharacter:>a1<>a2};
 
 
@@ -967,6 +1129,15 @@ str2scl[stream_,sn_String,rule_List:{}]:=Module[{s,e,r,c,start},
 s=First@StringPosition[stream,"\n "<>sn<>" := ",1];
 e=Last[s]+First@StringPosition[StringDrop[stream,Last[s]],";",1];
 ToExpression[StringReplace[StringTake[stream,{Last[s]+1,First[e]-1}],Join[rule,fermatspecials]]]
+];
+
+
+str2lst[stream_,mn_String,rule_List:{}]:=Module[{s,e,r,c,start},
+s=First@StringPosition[stream,("\nArray "<>mn<>"[")~~(DigitCharacter..)~~"];\n["<>mn<>"] := ["~~("("|"["),1];
+e=Last[s]+First@StringPosition[StringDrop[stream,Last[s]],(")"|"]")~~"];",1];
+start=StringTake[stream,s];
+r=First@StringCases[start,"["~~r:(DigitCharacter..)~~"]":>ToExpression[r]];
+ToExpression["{"<>StringReplace[StringTake[stream,{Last[s]+1,First[e]-1}],Join[rule,fermatspecials]]<>"}"]
 ];
 
 

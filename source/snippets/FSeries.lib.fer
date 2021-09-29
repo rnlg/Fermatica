@@ -1,0 +1,67 @@
+; (c) Roman Lee 2021
+; This is library for calculating series of quolynomials (rational functions)
+
+
+
+Array oCoefs[1];
+Function Coefs(poly, var; i1, lorder, span) =
+  lorder:=Codeg(poly,var);
+  span:=Deg(poly,var)-lorder+1;
+  @[oCoefs];
+  Array oCoefs[span];
+  for i1 = 1,span do
+    oCoefs[i1] := Coef(poly,var,i1-1+lorder)
+  od;
+  lorder.;
+
+Array cSeries[1]; { coefficients of series expansion}
+Function Series(quoly, var, var0, order, normal ; ncoefs, dcoefs, nterms, dmatr, series; i1,i2,t1,t2) =
+  quoly:= quoly # (var = var + var0);
+  @[cSeries];
+  [cSeries] := [(0)];
+  oSeries := order;
+  if quoly <> 0 then
+    oSeries := Coefs(Numer(quoly),var);
+    [ncoefs] := [oCoefs];
+    oSeries := oSeries - Coefs(Denom(quoly),var);
+    [dcoefs] := [oCoefs];
+    nterms := order-oSeries+1;
+    if nterms>0 then
+      {copy denominator}
+      Array dmatr[nterms,nterms];
+      {we copy dcoefs to the last row}
+      [dmatr]:=0;
+      t1 := Rows[dcoefs];
+      for i1 = 1, t1 do if i1 <= nterms then dmatr[nterms,nterms-i1+1]:=dcoefs[i1] fi od;
+      for i1 = nterms-1, 1,-1 do
+        [dmatr[i1,1~i1]]:=[dmatr[i1+1,2~(i1+1)]];
+      od;
+      @[cSeries];
+      Array cSeries[nterms];
+      {copy numerator}
+      [cSeries]:=0;
+      t1 := Rows[ncoefs];
+      for i1 = 1, t1 do if i1<=nterms then cSeries[i1]:=ncoefs[i1] fi od;
+      [cSeries]:= [dmatr]^-1*[cSeries];
+      @([dmatr],[dcoefs],[ncoefs]);
+      if normal = 0 then &} fi;
+      for i1 = 1,Rows[cSeries] do series := series + cSeries[i1]*var^i1 od;
+      series := series*var^(oSeries-1);
+      series := series # (var = var - var0);
+    else
+      oSeries:-
+    fi;
+  fi;
+  series.;
+
+
+Function SerCoef(quoly, var, var0, order; coef) =
+  Series(quoly, var, var0, order);
+  if oSeries+Rows[cSeries]>order and order-oSeries+1>0 then
+    coef := cSeries[order-oSeries+1]
+  fi;
+  @[cSeries];Array cSeries[1];
+  coef.;
+
+Function CleanUp =
+  @([oCoefs],Coefs,[cSeries],oSeries,Series,SerCoef,CleanUp).;
