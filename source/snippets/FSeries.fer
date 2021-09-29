@@ -1,0 +1,36 @@
+; (c) Roman Lee 2018
+; This is a template for calculating quolymod
+; It depends on FSeries.lib.fer file
+
+; parameters:
+; <vars> --- declaration of variables
+; <var> --- variable to expand
+; <var0> --- variable to expand
+; <order> --- order of expansion
+; <r>,<c> --- matrix size
+; <M> --- column-wise original matrix
+
+; ============== Variables ==============
+
+<<vars>>
+
+; ============== Arrays ==============
+
+Array m[<<r>>,<<c>>];
+[m] := [(
+<<M>>
+)];
+
+; ============== Program ==============
+
+for i = 1,<<r>> do
+  !!('Series');
+  for j = 1,<<c>> do
+    tmp := Series(m[i,j],<<var>>,<<var0>>,<<order>>,1);{workaround for a bug in fermat (see bug.fer)}
+    m[i,j] := tmp
+  od
+od;
+
+; ============== Clean up ==============
+@(i,j);
+CleanUp;
