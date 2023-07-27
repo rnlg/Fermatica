@@ -8,7 +8,7 @@
 (*Fermatica is a simple interface package between Fermat and Mathematica*)
 
 
-(* ::Section::Closed:: *)
+(* ::Section:: *)
 (*Begin*)
 
 
@@ -47,7 +47,7 @@ FSeriesCoefficient;
 $FermaticaHomeDirectory=DirectoryName[$InputFileName];
 
 
-$FermaticaVersion="1.01";
+$FermaticaVersion="1.1";
 $FermatVersionString="";
 
 
