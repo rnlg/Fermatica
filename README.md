@@ -21,4 +21,10 @@ If the environment variable `FERMATPATH` is defined, ***Fermatica*** will automa
 
 ### Usage
 
-Although ***Fermatica*** can be used on its own (e.g., many matrix functions are implemented, like `FDet, FDot, FInverse, ...`), its main usage for now is via the option `UseFermat->True` in several procedures of [***LiteRed2***](https://bitbucket.org/rnlee/litered2/) and [***Libra***](https://bitbucket.org/rnlee/libra/) packages.
+Although ***Fermatica*** can be used on its own (e.g., many matrix functions are implemented, like `FDet, FDot, FInverse, ...`), its main usage for now is via the option `UseFermat->True` in several procedures of [***LiteRed2***](https://github.com/rnlg/LiteRed2) and [***Libra***](https://github.com/rnlg/Libra) packages.
+
+### Attribution
+
+Note that ***Fermatica*** is only an interface to Fermat CAS. If you use ***Fermatica*** in your research, please, don't forget to cite Fermat, e.g., as
+
+\[1\] R.H. Lewis, *Computer Algebra System Fermat*, http://home.bway.net/lewis/
