@@ -1,0 +1,36 @@
+; (c) Roman Lee 2018
+; This is a template for calculating quolymod
+; It depends on FSeries.lib.fer file
+
+; parameters:
+; <vars> --- declaration of variables
+; <var> --- variable to expand
+; <var0> --- expansion point
+; <r>,<c> --- matrix size
+; <M> --- column-wise original matrix
+
+; ============== Variables ==============
+
+<<vars>>
+
+; ============== Arrays ==============
+
+Array m[<<r>>,<<c>>];
+[m] := [(
+<<M>>
+)];
+
+; ============== Program ==============
+lorder := 10000;{<=for infinity}
+
+for i = 1,<<r>> do
+  !!('LOrder');
+  for j = 1,<<c>> do
+    tmp := LOrder(m[i,j],<<var>>,<<var0>>);
+    if tmp<lorder then lorder := tmp fi
+  od
+od;
+
+; ============== Clean up ==============
+@(i,j,[m]);
+CleanUp;
