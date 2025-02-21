@@ -14,11 +14,21 @@ Function Coefs(poly, var; i1, lorder, span) =
   od;
   lorder.;
 
+Function LOrder(quoly, var, var0; lorder) =
+  if quoly <> 0 then
+    quoly:= quoly # (var = var + var0);
+    lorder := Codeg(Numer(quoly),var)-Codeg(Denom(quoly),var);
+  else
+    lorder := 10000
+  fi;
+  lorder.;
+
+oSeries := 10000;
 Array cSeries[1]; { coefficients of series expansion}
 Function Series(quoly, var, var0, order, normal ; ncoefs, dcoefs, nterms, dmatr, series; i1,i2,t1,t2) =
   quoly:= quoly # (var = var + var0);
-  @[cSeries];
-  [cSeries] := [(0)];
+  @[cSeries];Array cSeries[1];
+  [cSeries] := 0;
   oSeries := order;
   if quoly <> 0 then
     oSeries := Coefs(Numer(quoly),var);
